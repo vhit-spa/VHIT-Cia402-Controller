@@ -1,0 +1,18 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    cia402_controller:
+      type: cia402_controller/Cia402Controller
+
+cia402_controller:
+  ros__parameters:
+    joints:
+      - joint1
+    default_timeout: 5.0
+    step_timeout: 1.0
+    feedback_rate: 20.0
+    # 8 = Cyclic synchronous position
+    default_mode_of_operation: 8
+    # 4 = Disable operation, 5 = Disable voltage, 6 = Quick stop
+    fallback_command: 6

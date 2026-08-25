@@ -1,0 +1,55 @@
+# Semantic drive commands.
+# These are not raw Control Word values.
+
+uint8 COMMAND_SHUTDOWN=1
+uint8 COMMAND_SWITCH_ON=2
+uint8 COMMAND_ENABLE_OPERATION=3
+uint8 COMMAND_DISABLE_OPERATION=4
+uint8 COMMAND_DISABLE_VOLTAGE=5
+uint8 COMMAND_QUICK_STOP=6
+uint8 COMMAND_FAULT_RESET=7
+
+# Empty means all joints configured in the controller.
+string[] joint_names
+
+uint8 command
+
+# COMMAND_ENABLE_OPERATION writes the controller's configured
+# default_mode_of_operation and waits for the display value to match before
+# issuing the final Enable operation Controlword.
+
+# Zero means use the controller's configured default timeout.
+builtin_interfaces/Duration timeout
+
+---
+# Result
+
+uint8 RESULT_SUCCESS=0
+uint8 RESULT_REJECTED=1
+uint8 RESULT_INVALID_JOINT=2
+uint8 RESULT_INVALID_COMMAND=3
+uint8 RESULT_INVALID_TRANSITION=4
+uint8 RESULT_TIMEOUT=5
+uint8 RESULT_DRIVE_FAULT=6
+uint8 RESULT_COMMUNICATION_ERROR=7
+uint8 RESULT_CANCELLED=8
+
+bool success
+uint8 result_code
+string message
+
+cia402_interfaces/DriveState[] final_states
+
+---
+# Feedback
+
+uint8 PHASE_ACCEPTED=0
+uint8 PHASE_SETTING_MODE=1
+uint8 PHASE_COMMANDING_TRANSITION=2
+uint8 PHASE_WAITING_FOR_FEEDBACK=3
+uint8 PHASE_RESETTING_FAULT=4
+
+uint8 phase
+builtin_interfaces/Duration elapsed
+
+cia402_interfaces/DriveState[] states
