@@ -1,0 +1,20 @@
+# Ingoring colcon folders
+build/
+install/
+log/
+
+# Ignoring snap folders
+parts/
+prime/
+stage/
+overlay/
+
+# Ignoring snap package
+*.snap
+
+# Python cache
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
