@@ -39,6 +39,13 @@ namespace cia402_controller
 namespace
 {
 
+using vhit_cia402_core::CONTROLWORD_DISABLE_VOLTAGE;
+using vhit_cia402_core::CONTROLWORD_ENABLE_OPERATION;
+using vhit_cia402_core::CONTROLWORD_FAULT_RESET;
+using vhit_cia402_core::CONTROLWORD_QUICK_STOP;
+using vhit_cia402_core::CONTROLWORD_SHUTDOWN;
+using vhit_cia402_core::CONTROLWORD_SWITCH_ON;
+
 class TestableCia402Controller : public Cia402Controller
 {
 public:

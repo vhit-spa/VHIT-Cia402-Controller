@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-#include "cia402_controller/cia402_state_machine.hpp"
+#include <vhit_cia402_core.hpp>
 
 #include <controller_interface/controller_interface.hpp>
 #include <hardware_interface/loaned_command_interface.hpp>
@@ -43,18 +43,21 @@
 namespace cia402_controller
 {
 
+using DriveCommand = vhit_cia402_core::Cia402Commands;
+using DriveState = vhit_cia402_core::Cia402States;
+
 struct DriveContext
 {
   std::string joint_name;
 
   uint16_t status_word{0};
-  uint16_t control_word{CONTROLWORD_DISABLE_VOLTAGE};
+  uint16_t control_word{vhit_cia402_core::CONTROLWORD_DISABLE_VOLTAGE};
   int8_t modes_of_operation_display{0};
   int8_t modes_of_operation{0};
 
-  DriveState current_state{DriveState::UNKNOWN};
-  DriveState previous_state{DriveState::UNKNOWN};
-  DriveState expected_state{DriveState::UNKNOWN};
+  DriveState current_state{DriveState::STATE_UNKNOWN};
+  DriveState previous_state{DriveState::STATE_UNKNOWN};
+  DriveState expected_state{DriveState::STATE_UNKNOWN};
 
   bool feedback_valid{false};
   bool transition_complete{false};
@@ -71,7 +74,7 @@ struct DriveSnapshot
   uint16_t control_word{0};
   int8_t modes_of_operation_display{0};
   int8_t modes_of_operation{0};
-  DriveState state{DriveState::UNKNOWN};
+  DriveState state{DriveState::STATE_UNKNOWN};
   bool feedback_valid{false};
 };
 

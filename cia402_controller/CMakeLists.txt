@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.16)
 project(cia402_controller)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -15,14 +15,18 @@ find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(realtime_tools REQUIRED)
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/VhitCia402Core.cmake")
+
 add_library(${PROJECT_NAME} SHARED
   src/cia402_controller.cpp
-  src/cia402_state_machine.cpp
 )
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(${PROJECT_NAME}
+    vhit_cia402_core::vhit_cia402_core
 )
 ament_target_dependencies(${PROJECT_NAME}
   cia402_interfaces
@@ -55,6 +59,7 @@ install(
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_export_dependencies(
+  vhit_cia402_core
   cia402_interfaces
   controller_interface
   hardware_interface
@@ -68,12 +73,6 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
-
-  ament_add_gtest(test_cia402_state_machine
-    test/test_cia402_state_machine.cpp
-  )
-  target_link_libraries(test_cia402_state_machine ${PROJECT_NAME})
-  ament_target_dependencies(test_cia402_state_machine cia402_interfaces)
 
   ament_add_gtest(test_cia402_controller
     test/test_cia402_controller.cpp

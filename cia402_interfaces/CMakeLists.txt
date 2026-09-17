@@ -9,6 +9,8 @@ find_package(ament_cmake REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/VhitCia402Core.cmake")
+
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DriveState.msg"
   "msg/DriveStateArray.msg"

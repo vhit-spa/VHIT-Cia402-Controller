@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
@@ -37,6 +38,264 @@ constexpr double MAX_DURATION_SECONDS =
   static_cast<double>(std::numeric_limits<int32_t>::max());
 constexpr double MIN_FEEDBACK_RATE_HZ = 1.0;
 constexpr double MAX_FEEDBACK_RATE_HZ = 1000.0;
+
+std::optional<DriveCommand> drive_command_from_ros(const uint8_t command) noexcept
+{
+  using Goal = cia402_interfaces::action::ExecuteDriveCommand::Goal;
+
+  switch (command) {
+    case Goal::COMMAND_SHUTDOWN:
+      return DriveCommand::SHUTDOWN;
+    case Goal::COMMAND_SWITCH_ON:
+      return DriveCommand::SWITCH_ON;
+    case Goal::COMMAND_ENABLE_OPERATION:
+      return DriveCommand::ENABLE_OPERATION;
+    case Goal::COMMAND_DISABLE_OPERATION:
+      return DriveCommand::DISABLE_OPERATION;
+    case Goal::COMMAND_DISABLE_VOLTAGE:
+      return DriveCommand::DISABLE_VOLTAGE;
+    case Goal::COMMAND_QUICK_STOP:
+      return DriveCommand::QUICK_STOP;
+    case Goal::COMMAND_FAULT_RESET:
+      return DriveCommand::FAULT_RESET;
+    default:
+      return std::nullopt;
+  }
+}
+
+uint8_t drive_state_to_ros(const DriveState state) noexcept
+{
+  using Message = cia402_interfaces::msg::DriveState;
+
+  switch (state) {
+    case DriveState::STATE_NOT_READY_TO_SWITCH_ON:
+      return Message::STATE_NOT_READY_TO_SWITCH_ON;
+    case DriveState::STATE_SWITCH_ON_DISABLED:
+      return Message::STATE_SWITCH_ON_DISABLED;
+    case DriveState::STATE_READY_TO_SWITCH_ON:
+      return Message::STATE_READY_TO_SWITCH_ON;
+    case DriveState::STATE_SWITCHED_ON:
+      return Message::STATE_SWITCHED_ON;
+    case DriveState::STATE_OPERATION_ENABLED:
+      return Message::STATE_OPERATION_ENABLED;
+    case DriveState::STATE_QUICK_STOP_ACTIVE:
+      return Message::STATE_QUICK_STOP_ACTIVE;
+    case DriveState::STATE_FAULT_REACTION_ACTIVE:
+      return Message::STATE_FAULT_REACTION_ACTIVE;
+    case DriveState::STATE_FAULT:
+      return Message::STATE_FAULT;
+    case DriveState::STATE_UNKNOWN:
+      return Message::STATE_UNKNOWN;
+  }
+  return Message::STATE_UNKNOWN;
+}
+
+const char * drive_state_name(const DriveState state) noexcept
+{
+  switch (state) {
+    case DriveState::STATE_NOT_READY_TO_SWITCH_ON:
+      return "not ready to switch on";
+    case DriveState::STATE_SWITCH_ON_DISABLED:
+      return "switch on disabled";
+    case DriveState::STATE_READY_TO_SWITCH_ON:
+      return "ready to switch on";
+    case DriveState::STATE_SWITCHED_ON:
+      return "switched on";
+    case DriveState::STATE_OPERATION_ENABLED:
+      return "operation enabled";
+    case DriveState::STATE_QUICK_STOP_ACTIVE:
+      return "quick stop active";
+    case DriveState::STATE_FAULT_REACTION_ACTIVE:
+      return "fault reaction active";
+    case DriveState::STATE_FAULT:
+      return "fault";
+    case DriveState::STATE_UNKNOWN:
+      return "unknown";
+  }
+  return "unknown";
+}
+
+const char * drive_command_name(const DriveCommand command) noexcept
+{
+  switch (command) {
+    case DriveCommand::NONE:
+      return "none";
+    case DriveCommand::SHUTDOWN:
+      return "shutdown";
+    case DriveCommand::SWITCH_ON:
+      return "switch on";
+    case DriveCommand::SWITCH_ON_ENABLE_OPERATION:
+      return "switch on and enable operation";
+    case DriveCommand::ENABLE_OPERATION:
+      return "enable operation";
+    case DriveCommand::DISABLE_VOLTAGE:
+      return "disable voltage";
+    case DriveCommand::QUICK_STOP:
+      return "quick stop";
+    case DriveCommand::DISABLE_OPERATION:
+      return "disable operation";
+    case DriveCommand::FAULT_RESET:
+      return "fault reset";
+  }
+  return "unknown";
+}
+
+std::optional<DriveCommand> select_transition_command(
+  const DriveState current_state,
+  const DriveCommand requested_command) noexcept
+{
+  switch (requested_command) {
+    case DriveCommand::SHUTDOWN:
+      switch (current_state) {
+        case DriveState::STATE_SWITCH_ON_DISABLED:
+        case DriveState::STATE_READY_TO_SWITCH_ON:
+        case DriveState::STATE_SWITCHED_ON:
+        case DriveState::STATE_OPERATION_ENABLED:
+          return DriveCommand::SHUTDOWN;
+        case DriveState::STATE_QUICK_STOP_ACTIVE:
+          return DriveCommand::DISABLE_VOLTAGE;
+        default:
+          return std::nullopt;
+      }
+
+    case DriveCommand::SWITCH_ON:
+      switch (current_state) {
+        case DriveState::STATE_READY_TO_SWITCH_ON:
+        case DriveState::STATE_SWITCHED_ON:
+          return DriveCommand::SWITCH_ON;
+        case DriveState::STATE_SWITCH_ON_DISABLED:
+          return DriveCommand::SHUTDOWN;
+        case DriveState::STATE_OPERATION_ENABLED:
+          return DriveCommand::DISABLE_OPERATION;
+        case DriveState::STATE_QUICK_STOP_ACTIVE:
+          return DriveCommand::DISABLE_VOLTAGE;
+        default:
+          return std::nullopt;
+      }
+
+    case DriveCommand::ENABLE_OPERATION:
+    case DriveCommand::SWITCH_ON_ENABLE_OPERATION:
+      switch (current_state) {
+        case DriveState::STATE_OPERATION_ENABLED:
+        case DriveState::STATE_SWITCHED_ON:
+        case DriveState::STATE_QUICK_STOP_ACTIVE:
+          return DriveCommand::ENABLE_OPERATION;
+        case DriveState::STATE_READY_TO_SWITCH_ON:
+          return DriveCommand::SWITCH_ON;
+        case DriveState::STATE_SWITCH_ON_DISABLED:
+          return DriveCommand::SHUTDOWN;
+        default:
+          return std::nullopt;
+      }
+
+    case DriveCommand::DISABLE_OPERATION:
+      switch (current_state) {
+        case DriveState::STATE_OPERATION_ENABLED:
+        case DriveState::STATE_SWITCHED_ON:
+          return DriveCommand::DISABLE_OPERATION;
+        case DriveState::STATE_READY_TO_SWITCH_ON:
+          return DriveCommand::SHUTDOWN;
+        case DriveState::STATE_SWITCH_ON_DISABLED:
+          return DriveCommand::DISABLE_VOLTAGE;
+        case DriveState::STATE_QUICK_STOP_ACTIVE:
+          return DriveCommand::QUICK_STOP;
+        default:
+          return std::nullopt;
+      }
+
+    case DriveCommand::DISABLE_VOLTAGE:
+      switch (current_state) {
+        case DriveState::STATE_SWITCH_ON_DISABLED:
+        case DriveState::STATE_READY_TO_SWITCH_ON:
+        case DriveState::STATE_SWITCHED_ON:
+        case DriveState::STATE_OPERATION_ENABLED:
+        case DriveState::STATE_QUICK_STOP_ACTIVE:
+          return DriveCommand::DISABLE_VOLTAGE;
+        default:
+          return std::nullopt;
+      }
+
+    case DriveCommand::QUICK_STOP:
+      switch (current_state) {
+        case DriveState::STATE_READY_TO_SWITCH_ON:
+        case DriveState::STATE_SWITCHED_ON:
+        case DriveState::STATE_OPERATION_ENABLED:
+        case DriveState::STATE_QUICK_STOP_ACTIVE:
+          return DriveCommand::QUICK_STOP;
+        case DriveState::STATE_SWITCH_ON_DISABLED:
+          return DriveCommand::DISABLE_VOLTAGE;
+        default:
+          return std::nullopt;
+      }
+
+    case DriveCommand::FAULT_RESET:
+      switch (current_state) {
+        case DriveState::STATE_FAULT:
+          return DriveCommand::FAULT_RESET;
+        case DriveState::STATE_SWITCH_ON_DISABLED:
+          return DriveCommand::DISABLE_VOLTAGE;
+        default:
+          return std::nullopt;
+      }
+
+    case DriveCommand::NONE:
+      return std::nullopt;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<vhit_cia402_core::Cia402TransitionStep> calculate_next_transition_step(
+  const DriveState current_state,
+  const DriveCommand requested_command) noexcept
+{
+  if (current_state == DriveState::STATE_UNKNOWN) {
+    return std::nullopt;
+  }
+
+  DriveState automatic_goal = DriveState::STATE_UNKNOWN;
+  bool automatic_transition = false;
+  if (current_state == DriveState::STATE_NOT_READY_TO_SWITCH_ON) {
+    automatic_goal = DriveState::STATE_SWITCH_ON_DISABLED;
+    automatic_transition = true;
+  }
+  if (
+    current_state == DriveState::STATE_FAULT_REACTION_ACTIVE &&
+    requested_command == DriveCommand::FAULT_RESET)
+  {
+    automatic_goal = DriveState::STATE_FAULT;
+    automatic_transition = true;
+  }
+
+  if (automatic_transition) {
+    const auto * transition = vhit_cia402_core::getTransition(current_state, automatic_goal);
+    if (transition == nullptr || !transition->is_automatic) {
+      return std::nullopt;
+    }
+
+    vhit_cia402_core::Cia402TransitionStep step;
+    step.command = requested_command;
+    step.transition_id = transition->id;
+    step.control_word = vhit_cia402_core::CONTROLWORD_DISABLE_VOLTAGE;
+    step.status = vhit_cia402_core::Cia402TransitionStatus::RUNNING;
+    step.waiting_for_automatic_transition = true;
+    return step;
+  }
+
+  const auto transition_command = select_transition_command(current_state, requested_command);
+  if (!transition_command.has_value()) {
+    return std::nullopt;
+  }
+
+  return vhit_cia402_core::calculate_transition_step(*transition_command, current_state);
+}
+
+DriveState expected_state_for_step(
+  const vhit_cia402_core::Cia402TransitionStep & step) noexcept
+{
+  const auto * transition = vhit_cia402_core::getTransition(step.transition_id);
+  return transition == nullptr ? DriveState::STATE_UNKNOWN : transition->goal_state;
+}
 
 bool read_uint16_interface_value(const double value, uint16_t & output)
 {
@@ -108,22 +367,22 @@ int64_t saturating_add(const int64_t left, const int64_t right)
 uint16_t hold_control_word_for_state(const DriveState state)
 {
   switch (state) {
-    case DriveState::READY_TO_SWITCH_ON:
-      return CONTROLWORD_SHUTDOWN;
-    case DriveState::SWITCHED_ON:
-      return CONTROLWORD_SWITCH_ON;
-    case DriveState::OPERATION_ENABLED:
-      return CONTROLWORD_ENABLE_OPERATION;
-    case DriveState::QUICK_STOP_ACTIVE:
-      return CONTROLWORD_QUICK_STOP;
-    case DriveState::NOT_READY_TO_SWITCH_ON:
-    case DriveState::SWITCH_ON_DISABLED:
-    case DriveState::FAULT_REACTION_ACTIVE:
-    case DriveState::FAULT:
-    case DriveState::UNKNOWN:
-      return CONTROLWORD_DISABLE_VOLTAGE;
+    case DriveState::STATE_READY_TO_SWITCH_ON:
+      return vhit_cia402_core::CONTROLWORD_SHUTDOWN;
+    case DriveState::STATE_SWITCHED_ON:
+      return vhit_cia402_core::CONTROLWORD_SWITCH_ON;
+    case DriveState::STATE_OPERATION_ENABLED:
+      return vhit_cia402_core::CONTROLWORD_ENABLE_OPERATION;
+    case DriveState::STATE_QUICK_STOP_ACTIVE:
+      return vhit_cia402_core::CONTROLWORD_QUICK_STOP;
+    case DriveState::STATE_NOT_READY_TO_SWITCH_ON:
+    case DriveState::STATE_SWITCH_ON_DISABLED:
+    case DriveState::STATE_FAULT_REACTION_ACTIVE:
+    case DriveState::STATE_FAULT:
+    case DriveState::STATE_UNKNOWN:
+      return vhit_cia402_core::CONTROLWORD_DISABLE_VOLTAGE;
   }
-  return CONTROLWORD_DISABLE_VOLTAGE;
+  return vhit_cia402_core::CONTROLWORD_DISABLE_VOLTAGE;
 }
 
 builtin_interfaces::msg::Duration nanoseconds_to_duration_message(const int64_t nanoseconds)
@@ -148,7 +407,7 @@ controller_interface::CallbackReturn Cia402Controller::on_init()
     auto_declare<double>("feedback_rate", 20.0);
     auto_declare<int>("default_mode_of_operation", 8);
     auto_declare<int>(
-      "fallback_command", static_cast<int>(DriveCommand::QUICK_STOP));
+      "fallback_command", static_cast<int>(ExecuteDriveCommand::Goal::COMMAND_QUICK_STOP));
   } catch (const std::exception & exception) {
     RCLCPP_ERROR(
       get_node()->get_logger(), "Failed to declare controller parameters: %s",
@@ -245,9 +504,9 @@ controller_interface::CallbackReturn Cia402Controller::on_configure(
       "Parameter 'default_mode_of_operation' must be a non-zero signed 8-bit value");
     return CallbackReturn::ERROR;
   }
-  if (configured_fallback_command != static_cast<int>(DriveCommand::DISABLE_OPERATION) &&
-    configured_fallback_command != static_cast<int>(DriveCommand::DISABLE_VOLTAGE) &&
-    configured_fallback_command != static_cast<int>(DriveCommand::QUICK_STOP))
+  if (configured_fallback_command != ExecuteDriveCommand::Goal::COMMAND_DISABLE_OPERATION &&
+    configured_fallback_command != ExecuteDriveCommand::Goal::COMMAND_DISABLE_VOLTAGE &&
+    configured_fallback_command != ExecuteDriveCommand::Goal::COMMAND_QUICK_STOP)
   {
     RCLCPP_ERROR(
       node->get_logger(),
@@ -257,7 +516,7 @@ controller_interface::CallbackReturn Cia402Controller::on_configure(
   }
 
   default_mode_of_operation_ = static_cast<int8_t>(configured_mode);
-  fallback_command_ = static_cast<DriveCommand>(configured_fallback_command);
+  fallback_command_ = *drive_command_from_ros(static_cast<uint8_t>(configured_fallback_command));
   default_timeout_ns_ = seconds_to_nanoseconds(default_timeout_seconds_);
   step_timeout_ns_ = seconds_to_nanoseconds(step_timeout_seconds_);
   feedback_period_ns_ = std::max<int64_t>(
@@ -456,7 +715,7 @@ bool Cia402Controller::read_drive_feedback(const rclcpp::Time &, const bool log_
     context.feedback_valid = status_valid && mode_valid;
     if (!context.feedback_valid) {
       context.previous_state = context.current_state;
-      context.current_state = DriveState::UNKNOWN;
+      context.current_state = DriveState::STATE_UNKNOWN;
       all_valid = false;
       if (log_errors) {
         RCLCPP_ERROR(
@@ -470,7 +729,7 @@ bool Cia402Controller::read_drive_feedback(const rclcpp::Time &, const bool log_
     context.status_word = status_word;
     context.modes_of_operation_display = mode_display;
     context.previous_state = context.current_state;
-    context.current_state = decode_status_word(status_word);
+    context.current_state = vhit_cia402_core::getCia402StateFromStatusWord(status_word);
   }
   return all_valid;
 }
@@ -483,14 +742,14 @@ bool Cia402Controller::advance_drive(
   uint8_t & failure_code,
   std::string & failure_message)
 {
-  if (!context.feedback_valid || context.current_state == DriveState::UNKNOWN) {
+  if (!context.feedback_valid || context.current_state == DriveState::STATE_UNKNOWN) {
     failure_code = ExecuteDriveCommand::Result::RESULT_COMMUNICATION_ERROR;
     failure_message = "Invalid feedback from drive '" + context.joint_name + "'";
     return false;
   }
 
-  if ((context.current_state == DriveState::FAULT ||
-    context.current_state == DriveState::FAULT_REACTION_ACTIVE) &&
+  if ((context.current_state == DriveState::STATE_FAULT ||
+    context.current_state == DriveState::STATE_FAULT_REACTION_ACTIVE) &&
     command != DriveCommand::FAULT_RESET)
   {
     failure_code = ExecuteDriveCommand::Result::RESULT_DRIVE_FAULT;
@@ -507,14 +766,14 @@ bool Cia402Controller::advance_drive(
 
   // Fault reset is a one-update-cycle pulse. Clearing bit 7 after asserting it
   // guarantees that a future fault reset can produce another rising edge.
-  if (command == DriveCommand::FAULT_RESET && context.current_state == DriveState::FAULT) {
+  if (command == DriveCommand::FAULT_RESET && context.current_state == DriveState::STATE_FAULT) {
     if (!context.fault_reset_asserted) {
       context.fault_reset_asserted = true;
       context.step_elapsed_ns = 0;
-      context.expected_state = DriveState::SWITCH_ON_DISABLED;
-      context.control_word = CONTROLWORD_FAULT_RESET;
+      context.expected_state = DriveState::STATE_SWITCH_ON_DISABLED;
+      context.control_word = vhit_cia402_core::CONTROLWORD_FAULT_RESET;
     } else {
-      context.control_word = CONTROLWORD_DISABLE_VOLTAGE;
+      context.control_word = vhit_cia402_core::CONTROLWORD_DISABLE_VOLTAGE;
       context.step_elapsed_ns = saturating_add(context.step_elapsed_ns, period_ns);
       if (context.step_elapsed_ns > step_timeout_ns_) {
         failure_code = ExecuteDriveCommand::Result::RESULT_TIMEOUT;
@@ -528,9 +787,9 @@ bool Cia402Controller::advance_drive(
   }
 
   const bool at_final_enable_step = command == DriveCommand::ENABLE_OPERATION &&
-    (context.current_state == DriveState::SWITCHED_ON ||
-    context.current_state == DriveState::QUICK_STOP_ACTIVE ||
-    context.current_state == DriveState::OPERATION_ENABLED);
+    (context.current_state == DriveState::STATE_SWITCHED_ON ||
+    context.current_state == DriveState::STATE_QUICK_STOP_ACTIVE ||
+    context.current_state == DriveState::STATE_OPERATION_ENABLED);
   if (at_final_enable_step &&
     context.modes_of_operation_display != default_mode_of_operation_)
   {
@@ -547,10 +806,10 @@ bool Cia402Controller::advance_drive(
       return false;
     }
 
-    if (context.current_state == DriveState::QUICK_STOP_ACTIVE) {
-      context.control_word = CONTROLWORD_QUICK_STOP;
+    if (context.current_state == DriveState::STATE_QUICK_STOP_ACTIVE) {
+      context.control_word = vhit_cia402_core::CONTROLWORD_QUICK_STOP;
     } else {
-      context.control_word = CONTROLWORD_SWITCH_ON;
+      context.control_word = vhit_cia402_core::CONTROLWORD_SWITCH_ON;
     }
     control_word_interfaces_[drive_index].get().set_value(context.control_word);
     context.transition_complete = false;
@@ -558,8 +817,10 @@ bool Cia402Controller::advance_drive(
   }
   context.waiting_for_mode = false;
 
-  const TransitionStep step = calculate_transition_step(context.current_state, command);
-  if (!step.valid) {
+  const auto step = calculate_next_transition_step(context.current_state, command);
+  if (!step.has_value() ||
+    step->status == vhit_cia402_core::Cia402TransitionStatus::FAULT)
+  {
     failure_code = ExecuteDriveCommand::Result::RESULT_INVALID_TRANSITION;
     failure_message = "Command '" + std::string(drive_command_name(command)) +
       "' is invalid from state '" + drive_state_name(context.current_state) +
@@ -567,10 +828,20 @@ bool Cia402Controller::advance_drive(
     return false;
   }
 
-  context.control_word = step.control_word;
+  const DriveState expected_state = expected_state_for_step(*step);
+  if (expected_state == DriveState::STATE_UNKNOWN) {
+    failure_code = ExecuteDriveCommand::Result::RESULT_INVALID_TRANSITION;
+    failure_message = "The CiA 402 core returned an unknown transition for drive '" +
+      context.joint_name + "'";
+    return false;
+  }
+
+  context.control_word = step->control_word;
   control_word_interfaces_[drive_index].get().set_value(context.control_word);
 
-  if (step.goal_reached) {
+  if (step->goal_reached ||
+    step->status == vhit_cia402_core::Cia402TransitionStatus::SUCCEEDED)
+  {
     context.transition_complete = true;
     context.expected_state = context.current_state;
     context.step_elapsed_ns = 0;
@@ -579,19 +850,19 @@ bool Cia402Controller::advance_drive(
   }
 
   context.transition_complete = false;
-  if (context.expected_state != step.expected_state) {
-    context.expected_state = step.expected_state;
+  if (context.expected_state != expected_state) {
+    context.expected_state = expected_state;
     context.step_elapsed_ns = 0;
-  } else if (!step.waiting_for_automatic_transition) {
+  } else if (!step->waiting_for_automatic_transition) {
     context.step_elapsed_ns = saturating_add(context.step_elapsed_ns, period_ns);
   }
-  if (!step.waiting_for_automatic_transition &&
+  if (!step->waiting_for_automatic_transition &&
     context.step_elapsed_ns > step_timeout_ns_)
   {
     failure_code = ExecuteDriveCommand::Result::RESULT_TIMEOUT;
     std::ostringstream stream;
     stream << "Transition timed out for drive '" << context.joint_name << "' while waiting for '"
-           << drive_state_name(step.expected_state) << "'";
+           << drive_state_name(expected_state) << "'";
     failure_message = stream.str();
     return false;
   }
@@ -619,7 +890,7 @@ controller_interface::return_type Cia402Controller::update(
       for (const std::size_t index : active_goal->selected_indices) {
         auto & context = drive_contexts_[index];
         context.transition_complete = false;
-        context.expected_state = DriveState::UNKNOWN;
+        context.expected_state = DriveState::STATE_UNKNOWN;
         context.fault_reset_asserted = false;
         context.waiting_for_mode = false;
         context.step_elapsed_ns = 0;
@@ -704,7 +975,7 @@ rclcpp_action::GoalResponse Cia402Controller::goal_callback(
   {
     return rclcpp_action::GoalResponse::REJECT;
   }
-  if (!is_valid_drive_command(goal->command)) {
+  if (!drive_command_from_ros(goal->command).has_value()) {
     RCLCPP_WARN(
       get_node()->get_logger(), "Rejecting goal with unknown drive command %u", goal->command);
     return rclcpp_action::GoalResponse::REJECT;
@@ -769,7 +1040,11 @@ void Cia402Controller::accepted_callback(
     auto active_goal = std::make_shared<ActiveGoal>();
     active_goal->handle = realtime_goal;
     active_goal->activation_generation = activation_generation;
-    active_goal->command = to_drive_command(goal->command);
+    const auto command = drive_command_from_ros(goal->command);
+    if (!command.has_value()) {
+      throw std::invalid_argument("Unknown drive command");
+    }
+    active_goal->command = *command;
     active_goal->timeout_ns = timeout_to_nanoseconds(goal->timeout, default_timeout_ns_);
 
     if (goal->joint_names.empty()) {
@@ -881,12 +1156,12 @@ void Cia402Controller::stage_fallback_commands(
       continue;
     }
     auto & context = drive_contexts_[index];
-    const TransitionStep fallback_step = calculate_transition_step(
+    const auto fallback_step = calculate_next_transition_step(
       context.current_state, fallback_command_);
-    context.control_word = fallback_step.valid ?
-      fallback_step.control_word : CONTROLWORD_DISABLE_VOLTAGE;
-    context.expected_state = fallback_step.valid ?
-      fallback_step.expected_state : DriveState::SWITCH_ON_DISABLED;
+    context.control_word = fallback_step.has_value() ?
+      fallback_step->control_word : vhit_cia402_core::CONTROLWORD_DISABLE_VOLTAGE;
+    context.expected_state = fallback_step.has_value() ?
+      expected_state_for_step(*fallback_step) : DriveState::STATE_SWITCH_ON_DISABLED;
     context.transition_complete = false;
     context.fault_reset_asserted = false;
     context.waiting_for_mode = false;
@@ -1006,25 +1281,23 @@ cia402_interfaces::msg::DriveState Cia402Controller::make_drive_state_message(
   message.status_word = snapshot.status_word;
   message.mode_of_operation_display = snapshot.modes_of_operation_display;
   message.feedback_valid = snapshot.feedback_valid;
-  message.state = static_cast<uint8_t>(snapshot.state);
+  message.state = drive_state_to_ros(snapshot.state);
   message.commanded_control_word = snapshot.control_word;
   message.commanded_mode_of_operation = snapshot.modes_of_operation;
 
-  StatusWordFlags flags{};
-  if (snapshot.feedback_valid) {
-    flags = decode_status_word_flags(snapshot.status_word);
-  }
-  message.ready_to_switch_on = flags.ready_to_switch_on;
-  message.switched_on = flags.switched_on;
-  message.operation_enabled = flags.operation_enabled;
-  message.fault = flags.fault;
-  message.voltage_enabled = flags.voltage_enabled;
-  message.quick_stop_active = flags.quick_stop_active;
-  message.switch_on_disabled = flags.switch_on_disabled;
-  message.warning = flags.warning;
-  message.remote = flags.remote;
-  message.target_reached = flags.target_reached;
-  message.internal_limit_active = flags.internal_limit_active;
+  const uint16_t status_word = snapshot.feedback_valid ? snapshot.status_word : 0U;
+  message.ready_to_switch_on = (status_word & (1U << 0U)) != 0U;
+  message.switched_on = (status_word & (1U << 1U)) != 0U;
+  message.operation_enabled = (status_word & (1U << 2U)) != 0U;
+  message.fault = (status_word & (1U << 3U)) != 0U;
+  message.voltage_enabled = (status_word & (1U << 4U)) != 0U;
+  message.quick_stop_active = snapshot.feedback_valid &&
+    snapshot.state == DriveState::STATE_QUICK_STOP_ACTIVE;
+  message.switch_on_disabled = (status_word & (1U << 6U)) != 0U;
+  message.warning = (status_word & (1U << 7U)) != 0U;
+  message.remote = (status_word & (1U << 9U)) != 0U;
+  message.target_reached = (status_word & (1U << 10U)) != 0U;
+  message.internal_limit_active = (status_word & (1U << 11U)) != 0U;
   return message;
 }
 
